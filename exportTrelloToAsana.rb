@@ -51,7 +51,7 @@ boards.each do |board|
   next if board.closed?
   
   puts "\n=== Export Board #{board.name}? [yn]"
-  next unless gets.chomp == 'y' 
+  next unless gets.chomp == 'y'
 
   # Which workspace to put it in
   workspace = workspaces[get_option_from_list(workspaces, 
@@ -67,6 +67,8 @@ boards.each do |board|
 
   puts ' -- Getting users --'
   users = workspace.users
+
+  trello_members = Trello::Organization.find("labcoop").members
 
   board.lists.each do |list|
   
@@ -88,6 +90,19 @@ boards.each do |board|
           u.name == card.members[0].full_name
         }
         t.assignee = userList[0].id unless userList.empty?
+
+        member_names = card.member_ids.map { |member_id|
+          idx = trello_members.index { |m|
+            m.id == member_id
+          }
+          name = nil
+          if idx != nil
+            name = trello_members[idx].full_name
+          end
+          name
+        }
+        trello_member_names = member_names.join(", ")
+        t.notes = "Trello members: #{trello_member_names}\n\n#{t.notes}"
       end
 
       task = workspace.create_task(t.attributes)
@@ -96,9 +111,16 @@ boards.each do |board|
       task.add_project(project.id)
 
       #Stories / Trello comments
-      comments = card.actions.select {|a| a.type == 'commentCard'}
+      comments = card.actions.select {|a| a.type == 'commentCard'}.reverse
       comments.each do |c|
-        task.create_story({:text => c.data['text']})
+        idx = trello_members.index { |m|
+          m.id == c.member_creator_id
+        }
+        commenter_name = '?'
+        if idx != nil
+          commenter_name = trello_members[idx].full_name
+        end
+        task.create_story({:text => "#{commenter_name} commented:\n #{c.data['text']}"})
       end
 
       #Subtasks
